@@ -13,6 +13,7 @@ import (
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	influxdblog "github.com/influxdata/influxdb-client-go/v2/log"
+	protocol "github.com/influxdata/line-protocol"
 	"github.com/sirupsen/logrus"
 	"go.k6.io/k6/metrics"
 	"go.k6.io/k6/output"
@@ -206,11 +207,29 @@ func (o *Output) flushMetrics() {
 		}
 
 		d := time.Since(start)
-		o.logger.WithField("elapsed", d).Debug("Metrics points have been sent")
-		if d > time.Duration(o.config.PushInterval.Duration) {
-			msg := "The flush operation took higher than the expected set push interval. If you see this message multiple times then the setup or configuration need to be adjusted to achieve a sustainable rate."
-			o.logger.WithField("t", d).Warn(msg)
+		s := batch[0]
+		e := batch[len(batch)-1]
+
+		showPoint := func(p *write.Point) string {
+			showTag := func(tags []*protocol.Tag) string {
+				o := ""
+				for _, t := range tags {
+					o += t.Key + ":" + t.Value
+					o += " "
+				}
+				return o
+			}
+			showField := func(fs []*protocol.Field) string {
+				o := ""
+				for _, f := range fs {
+					o += f.Key + ":" + fmt.Sprintf("%v", f.Value)
+					o += " "
+				}
+				return o
+			}
+			return fmt.Sprintf("name %v time %v tag %v field %v", p.Name(), p.Time(), showTag(p.TagList()), showField(p.FieldList()))
 		}
+		o.logger.Info(fmt.Sprintf("flush once. start %v elapsed %v samples %v points %v s %v e %v", start, d, len(samples), len(batch), showPoint(s), showPoint(e)))
 	}()
 }
 
